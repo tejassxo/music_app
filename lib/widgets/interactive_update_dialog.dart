@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:ota_update/ota_update.dart';
@@ -46,10 +45,13 @@ class _InteractiveUpdateDialogState extends State<InteractiveUpdateDialog>
     super.dispose();
   }
 
+  bool get _isAndroid =>
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+
   Future<void> _startOta() async {
     if (_isDownloading) return;
 
-    if (kIsWeb || !Platform.isAndroid) {
+    if (!_isAndroid) {
       _openInBrowser();
       return;
     }
@@ -138,14 +140,17 @@ class _InteractiveUpdateDialogState extends State<InteractiveUpdateDialog>
     }
   }
 
-  Future<void> _openInBrowser() async {
-    final uri = Uri.parse(widget.info.downloadUrl);
+  Future<void> _openInBrowser({bool forceApk = false}) async {
+    final targetUrl = (!forceApk && kIsWeb)
+        ? (widget.info.releasePageUrl ?? widget.info.downloadUrl)
+        : widget.info.downloadUrl;
+    final uri = Uri.parse(targetUrl);
     try {
       if (await canLaunchUrl(uri)) {
         await launchUrl(uri, mode: LaunchMode.externalApplication);
       } else {
         setState(() {
-          _errorMessage = 'Could not launch download URL in browser.';
+          _errorMessage = 'Could not launch release URL in browser.';
         });
       }
     } catch (e) {
@@ -298,7 +303,9 @@ class _InteractiveUpdateDialogState extends State<InteractiveUpdateDialog>
                                     ),
                                   ),
                                   child: Text(
-                                    '${widget.info.currentVersion} ➔ ${widget.info.tagName} • ${widget.info.formattedSize}',
+                                    kIsWeb
+                                        ? '${widget.info.currentVersion} ➔ ${widget.info.tagName} • Web'
+                                        : '${widget.info.currentVersion} ➔ ${widget.info.tagName} • ${widget.info.formattedSize}',
                                     style: TextStyle(
                                       color: themeColor,
                                       fontSize: 12,
@@ -386,10 +393,12 @@ class _InteractiveUpdateDialogState extends State<InteractiveUpdateDialog>
                               ),
                               const SizedBox(height: 8),
                               GestureDetector(
-                                onTap: _openInBrowser,
-                                child: const Text(
-                                  'Tap here to download APK in browser ➔',
-                                  style: TextStyle(
+                                onTap: () => _openInBrowser(),
+                                child: Text(
+                                  kIsWeb
+                                      ? 'Tap here to view release in browser ➔'
+                                      : 'Tap here to download APK in browser ➔',
+                                  style: const TextStyle(
                                     color: Colors.amberAccent,
                                     fontSize: 12,
                                     fontWeight: FontWeight.bold,
@@ -453,6 +462,88 @@ class _InteractiveUpdateDialogState extends State<InteractiveUpdateDialog>
                             ),
                           ],
                         ),
+                      ] else if (kIsWeb) ...[
+                        Row(
+                          children: [
+                            Expanded(
+                              child: TextButton(
+                                onPressed: () => Navigator.of(context).pop(),
+                                style: TextButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 14,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(14),
+                                  ),
+                                ),
+                                child: const Text(
+                                  'Dismiss',
+                                  style: TextStyle(
+                                    color: Colors.white60,
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              flex: 2,
+                              child: ElevatedButton(
+                                onPressed: () => _openInBrowser(),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: themeColor,
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 14,
+                                  ),
+                                  elevation: 0,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(14),
+                                  ),
+                                  shadowColor: themeColor.withValues(
+                                    alpha: 0.5,
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: const [
+                                    Icon(Icons.open_in_new_rounded, size: 20),
+                                    SizedBox(width: 8),
+                                    Text(
+                                      'View Release',
+                                      style: TextStyle(
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (widget.info.downloadUrl.endsWith('.apk')) ...[
+                          const SizedBox(height: 10),
+                          Center(
+                            child: TextButton.icon(
+                              onPressed: () => _openInBrowser(forceApk: true),
+                              icon: const Icon(
+                                Icons.android_rounded,
+                                size: 16,
+                                color: Colors.white54,
+                              ),
+                              label: Text(
+                                'Download Android APK (${widget.info.formattedSize})',
+                                style: const TextStyle(
+                                  color: Colors.white54,
+                                  fontSize: 12,
+                                  decoration: TextDecoration.underline,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
                       ] else ...[
                         Row(
                           children: [

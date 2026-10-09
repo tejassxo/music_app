@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../services/dynamic_artist_service.dart';
+import 'dilse_image.dart';
 
 /// Card widget representing an Artist in the Search screen.
 /// Matches CategoryCard's visual design, dimensions, and micro-interactions,
@@ -72,13 +73,10 @@ class _ArtistCardState extends State<ArtistCard> {
                   children: [
                     // 1. Background: Artist photo filled in the box
                     Positioned.fill(
-                      child: Image.network(
-                        widget.artist.imageUrl,
+                      child: DilSeImage(
+                        imageUrl: widget.artist.imageUrl,
                         fit: BoxFit.cover,
-                        cacheWidth: 350,
-                        cacheHeight: 350,
-                        filterQuality: FilterQuality.medium,
-                        errorBuilder: (context, error, stackTrace) => Container(
+                        errorWidget: Container(
                           decoration: const BoxDecoration(
                             gradient: LinearGradient(
                               colors: [Color(0xFF232336), Color(0xFF13131D)],

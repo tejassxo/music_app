@@ -54,6 +54,11 @@ dependencies:
   sensors_plus: ^5.0.1
   image_picker: ^1.1.2
   flutter_email_sender: ^6.0.3
+  cached_network_image: ^4.0.3
+  sqflite: ^2.4.4+1
+  dynamic_color: ^2.1.0
+  fuzzy: ^0.5.2
+  path: ^1.9.1
 
 dev_dependencies:
   flutter_test:

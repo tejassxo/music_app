@@ -12,9 +12,50 @@ class CanonicalSongDedup {
   // Noise regex for titles
   static final RegExp _bracketNoise = RegExp(r'\([^)]*\)|\[[^\]]*\]');
   static final RegExp _featNoise = RegExp(
-    r'\b(feat\.?|ft\.?)\b.*$',
+    r'\b(?:feat|ft)\.?(?:\s+|$).*$',
     caseSensitive: false,
   );
+  static final RegExp _featPattern = RegExp(
+    r'(?:[\(\[]\s*)?\b(?:feat|ft|featuring)\.?\s+([^\)\]\|,]+)(?:\s*[\)\]])?|'
+    r'[\(\[]\s*with\s+([^\)\]\|,]+)\s*[\)\]]',
+    caseSensitive: false,
+  );
+
+  /// Detects whether a title or artist credit indicates a featured collaboration.
+  static bool isFeaturedTrack(String title, [String? artist]) {
+    if (title.isNotEmpty && _featPattern.hasMatch(title)) return true;
+    if (artist != null && artist.isNotEmpty && _featPattern.hasMatch(artist)) {
+      return true;
+    }
+    return false;
+  }
+
+  /// Extracts the primary featured artist from title or artist credit.
+  static String? extractFeaturedArtist(String title, [String? artist]) {
+    if (title.isNotEmpty) {
+      final mTitle = _featPattern.firstMatch(title);
+      if (mTitle != null) {
+        final feat = (mTitle.group(1) ?? mTitle.group(2))?.trim();
+        if (feat != null && feat.isNotEmpty) return feat;
+      }
+    }
+    if (artist != null && artist.isNotEmpty) {
+      final mArtist = _featPattern.firstMatch(artist);
+      if (mArtist != null) {
+        final feat = (mArtist.group(1) ?? mArtist.group(2))?.trim();
+        if (feat != null && feat.isNotEmpty) return feat;
+      }
+    }
+    return null;
+  }
+
+  /// Extracts clean core base title without featured tags or bracket noise.
+  static String extractBaseTitle(String title) {
+    if (title.trim().isEmpty) return '';
+    var s = title.replaceAll(_featPattern, ' ');
+    return cleanTitle(s);
+  }
+
   static final RegExp _videoNoiseWords = RegExp(
     r'\b(official\s+video|official\s+music\s+video|official\s+lyric\s+video|lyric\s+video|'
     r'full\s+video\s+song|video\s+song|full\s+song|full\s+audio|audio\s+song|lyrics|'
@@ -533,6 +574,8 @@ class CanonicalSongDedup {
     int? targetDuration,
     required Map<String, dynamic> candidate,
     List<String>? contextKeywords,
+    bool isTargetFeatured = false,
+    String? targetFeaturedArtist,
   }) {
     final synced = candidate['syncedLyrics'] as String?;
     final plain = candidate['plainLyrics'] as String?;
@@ -646,6 +689,33 @@ class CanonicalSongDedup {
     // 7. Synced lyrics preference (massive preference for synced over plain)
     if (synced != null && synced.trim().isNotEmpty) {
       score += 300;
+    }
+
+    // 8. Feature alignment (Original vs Featured differentiation)
+    final candHasFeat = isFeaturedTrack(trackName, cArtist);
+    if (isTargetFeatured) {
+      if (candHasFeat) {
+        score += 200; // Alignment bonus for featured candidate
+        if (targetFeaturedArtist != null && targetFeaturedArtist.isNotEmpty) {
+          final featTokens = tokenize(targetFeaturedArtist);
+          final candTokens = tokenize('$trackName $cArtist');
+          if (featTokens.intersection(candTokens).isNotEmpty) {
+            score += 300; // Large reward for matching target featured artist
+          } else {
+            score -= 200; // Mismatched guest artist
+          }
+        }
+      } else {
+        score -=
+            400; // Penalize solo original candidate when resolving a featured track
+      }
+    } else {
+      if (candHasFeat) {
+        score -=
+            400; // Penalize featured candidate when resolving a solo original track
+      } else {
+        score += 150; // Bonus for pure solo original alignment
+      }
     }
 
     return score;

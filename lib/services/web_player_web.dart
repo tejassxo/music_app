@@ -223,13 +223,11 @@ class WebPlayerBridge {
     }
   }
 
-  static void setVolume(double volumePercent) {
+  static void setVolume(double volume) {
+    final normalized = (volume > 1.0 ? volume / 100.0 : volume).clamp(0.0, 1.0);
     final globalWindow = web.window as JSObject;
     if (globalWindow.hasProperty('dilseSetVolume'.toJS).toDart) {
-      globalWindow.callMethod(
-        'dilseSetVolume'.toJS,
-        (volumePercent * 100).toJS,
-      );
+      globalWindow.callMethod('dilseSetVolume'.toJS, (normalized * 100).toJS);
     }
   }
 

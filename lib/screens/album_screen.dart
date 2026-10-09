@@ -7,6 +7,7 @@ import '../services/music_service.dart';
 import '../widgets/mini_player.dart';
 import '../widgets/animated_equalizer.dart';
 import '../layouts/desktop_layout_state.dart';
+import '../widgets/dilse_scrollbar.dart';
 
 class AlbumScreen extends StatefulWidget {
   /// Provide either [album] (full) or [albumId] + [albumTitle] (for lazy load).
@@ -24,8 +25,8 @@ class AlbumScreen extends StatefulWidget {
     this.albumArtwork,
     this.albumArtist,
   }) : assert(
-         album != null || albumId != null,
-         'Either album or albumId must be provided',
+         album != null || albumId != null || albumTitle != null,
+         'Either album, albumId, or albumTitle must be provided',
        );
 
   @override
@@ -35,6 +36,7 @@ class AlbumScreen extends StatefulWidget {
 class _AlbumScreenState extends State<AlbumScreen>
     with SingleTickerProviderStateMixin {
   final MusicService _music = MusicService();
+  final ScrollController _scrollController = ScrollController();
   JioAlbum? _album;
   bool _loading = true;
   String? _error;
@@ -79,44 +81,64 @@ class _AlbumScreenState extends State<AlbumScreen>
 
       // Resilient Fallback: If 0 songs were found via album ID, search tracks by album title
       if ((loaded == null || loaded.songs.isEmpty) && title.isNotEmpty) {
-        final fallbackTracks = await _music.searchSongs(title, limit: 25);
-        if (fallbackTracks.isNotEmpty) {
-          final mapped = fallbackTracks
-              .map(
-                (v) => {
-                  'id': v.id.value,
-                  'title': v.title,
-                  'author': v.author,
-                  'album': title,
-                  'thumbnail': v.thumbnails.highResUrl,
-                  'duration': v.duration?.inSeconds ?? 0,
-                  'trackNumber': 0,
-                },
-              )
-              .toList();
+        try {
+          final albumCandidates = await _music.searchAlbums(title, limit: 3);
+          if (albumCandidates.isNotEmpty) {
+            final titleLower = title.toLowerCase();
+            final match = albumCandidates.firstWhere(
+              (a) =>
+                  a.title.toLowerCase().contains(titleLower) ||
+                  titleLower.contains(a.title.toLowerCase()),
+              orElse: () => albumCandidates.first,
+            );
+            if (match.id.isNotEmpty) {
+              loaded = await _music.fetchAlbumTracks(match.id);
+            }
+          }
+        } catch (_) {}
 
-          loaded =
-              (loaded ??
-                      JioAlbum(
-                        id: id.isNotEmpty ? id : 'search_$title',
-                        title: title,
-                        artist:
-                            widget.albumArtist ?? widget.album?.artist ?? '',
-                        artwork:
-                            widget.albumArtwork ?? widget.album?.artwork ?? '',
-                        year: widget.album?.year ?? '',
-                        songCount: mapped.length,
-                        language: widget.album?.language ?? '',
-                      ))
-                  .copyWith(
-                    songs: mapped,
-                    songCount: mapped.length,
-                    artwork: (loaded?.artwork.isNotEmpty == true)
-                        ? loaded!.artwork
-                        : (mapped.isNotEmpty
-                              ? mapped[0]['thumbnail'] as String?
-                              : null),
-                  );
+        if (loaded == null || loaded.songs.isEmpty) {
+          final fallbackTracks = await _music.searchSongs(title, limit: 25);
+          if (fallbackTracks.isNotEmpty) {
+            final mapped = fallbackTracks
+                .map(
+                  (v) => {
+                    'id': v.id.value,
+                    'title': v.title,
+                    'author': v.author,
+                    'album': title,
+                    'thumbnail': v.thumbnails.highResUrl,
+                    'duration': v.duration?.inSeconds ?? 0,
+                    'trackNumber': 0,
+                  },
+                )
+                .toList();
+
+            loaded =
+                (loaded ??
+                        JioAlbum(
+                          id: id.isNotEmpty ? id : 'search_$title',
+                          title: title,
+                          artist:
+                              widget.albumArtist ?? widget.album?.artist ?? '',
+                          artwork:
+                              widget.albumArtwork ??
+                              widget.album?.artwork ??
+                              '',
+                          year: widget.album?.year ?? '',
+                          songCount: mapped.length,
+                          language: widget.album?.language ?? '',
+                        ))
+                    .copyWith(
+                      songs: mapped,
+                      songCount: mapped.length,
+                      artwork: (loaded?.artwork.isNotEmpty == true)
+                          ? loaded!.artwork
+                          : (mapped.isNotEmpty
+                                ? mapped[0]['thumbnail'] as String?
+                                : null),
+                    );
+          }
         }
       }
 
@@ -190,6 +212,7 @@ class _AlbumScreenState extends State<AlbumScreen>
 
   @override
   void dispose() {
+    _scrollController.dispose();
     _fadeCtrl.dispose();
     super.dispose();
   }
@@ -217,176 +240,183 @@ class _AlbumScreenState extends State<AlbumScreen>
       backgroundColor: const Color(0xFF0B0B0F),
       body: Stack(
         children: [
-          CustomScrollView(
-            slivers: [
-              // Cinematic header
-              SliverAppBar(
-                expandedHeight: 340,
-                pinned: true,
-                backgroundColor: const Color(0xFF0B0B0F),
-                leading: IconButton(
-                  icon: const Icon(
-                    Icons.arrow_back_ios_new_rounded,
-                    color: Colors.white,
+          DilSeScrollbar(
+            controller: _scrollController,
+            bottomPadding: 90.0,
+            child: CustomScrollView(
+              controller: _scrollController,
+              slivers: [
+                // Cinematic header
+                SliverAppBar(
+                  expandedHeight: 340,
+                  pinned: true,
+                  backgroundColor: const Color(0xFF0B0B0F),
+                  leading: IconButton(
+                    icon: const Icon(
+                      Icons.arrow_back_ios_new_rounded,
+                      color: Colors.white,
+                    ),
+                    onPressed: () {
+                      if (Navigator.canPop(context)) {
+                        Navigator.pop(context);
+                      } else {
+                        DesktopLayoutState.closeDetailView();
+                      }
+                    },
                   ),
-                  onPressed: () {
-                    if (Navigator.canPop(context)) {
-                      Navigator.pop(context);
-                    } else {
-                      DesktopLayoutState.closeDetailView();
-                    }
-                  },
-                ),
-                flexibleSpace: FlexibleSpaceBar(
-                  background: _buildHeader(
-                    effectiveArtwork,
-                    title,
-                    artist,
-                    year,
-                  ),
-                ),
-              ),
-
-              // Loading / Error
-              if (_loading)
-                const SliverFillRemaining(
-                  child: Center(
-                    child: CircularProgressIndicator(color: Color(0xFF7C3AED)),
-                  ),
-                )
-              else if (_error != null)
-                SliverFillRemaining(
-                  child: Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(
-                          Icons.error_outline_rounded,
-                          color: Colors.white38,
-                          size: 48,
-                        ),
-                        const SizedBox(height: 12),
-                        Text(
-                          _error!,
-                          style: const TextStyle(
-                            color: Colors.white54,
-                            fontSize: 14,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                        const SizedBox(height: 16),
-                        TextButton(
-                          onPressed: () {
-                            setState(() {
-                              _loading = true;
-                              _error = null;
-                            });
-                            _loadAlbum();
-                          },
-                          child: const Text(
-                            'Retry',
-                            style: TextStyle(color: Color(0xFF7C3AED)),
-                          ),
-                        ),
-                      ],
+                  flexibleSpace: FlexibleSpaceBar(
+                    background: _buildHeader(
+                      effectiveArtwork,
+                      title,
+                      artist,
+                      year,
                     ),
                   ),
-                )
-              else if (_album!.songs.isEmpty)
-                SliverFillRemaining(
-                  hasScrollBody: false,
-                  child: Center(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 32),
+                ),
+
+                // Loading / Error
+                if (_loading)
+                  const SliverFillRemaining(
+                    child: Center(
+                      child: CircularProgressIndicator(
+                        color: Color(0xFF7C3AED),
+                      ),
+                    ),
+                  )
+                else if (_error != null)
+                  SliverFillRemaining(
+                    child: Center(
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           const Icon(
-                            Icons.album_outlined,
-                            color: Colors.white24,
-                            size: 64,
+                            Icons.error_outline_rounded,
+                            color: Colors.white38,
+                            size: 48,
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            _error!,
+                            style: const TextStyle(
+                              color: Colors.white54,
+                              fontSize: 14,
+                            ),
+                            textAlign: TextAlign.center,
                           ),
                           const SizedBox(height: 16),
-                          const Text(
-                            'No tracks available for this album',
-                            style: TextStyle(
-                              color: Colors.white70,
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
+                          TextButton(
+                            onPressed: () {
+                              setState(() {
+                                _loading = true;
+                                _error = null;
+                              });
+                              _loadAlbum();
+                            },
+                            child: const Text(
+                              'Retry',
+                              style: TextStyle(color: Color(0xFF7C3AED)),
                             ),
-                            textAlign: TextAlign.center,
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            'The songs for "$title" may be restricted or pending catalog release.',
-                            style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.4),
-                              fontSize: 13,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                          const SizedBox(height: 24),
-                          ElevatedButton.icon(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF7C3AED),
-                              foregroundColor: Colors.white,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 20,
-                                vertical: 12,
-                              ),
-                            ),
-                            onPressed: () => Navigator.pop(context),
-                            icon: const Icon(
-                              Icons.arrow_back_rounded,
-                              size: 18,
-                            ),
-                            label: const Text('Back to Search'),
                           ),
                         ],
                       ),
                     ),
-                  ),
-                )
-              else ...[
-                // Play / Shuffle buttons
-                SliverToBoxAdapter(child: _buildControls()),
+                  )
+                else if (_album!.songs.isEmpty)
+                  SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: Center(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 32),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.album_outlined,
+                              color: Colors.white24,
+                              size: 64,
+                            ),
+                            const SizedBox(height: 16),
+                            const Text(
+                              'No tracks available for this album',
+                              style: TextStyle(
+                                color: Colors.white70,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'The songs for "$title" may be restricted or pending catalog release.',
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.4),
+                                fontSize: 13,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                            const SizedBox(height: 24),
+                            ElevatedButton.icon(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF7C3AED),
+                                foregroundColor: Colors.white,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 20,
+                                  vertical: 12,
+                                ),
+                              ),
+                              onPressed: () => Navigator.pop(context),
+                              icon: const Icon(
+                                Icons.arrow_back_rounded,
+                                size: 18,
+                              ),
+                              label: const Text('Back to Search'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  )
+                else ...[
+                  // Play / Shuffle buttons
+                  SliverToBoxAdapter(child: _buildControls()),
 
-                // Song count info
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-                    child: Text(
-                      _album!.songs.length == 1
-                          ? 'Single • 1 song${year.isNotEmpty ? ' • $year' : ''}'
-                          : '${_album!.songs.length} songs'
-                                '${year.isNotEmpty ? ' • $year' : ''}'
-                                '${_album!.language.isNotEmpty ? ' • ${_album!.language[0].toUpperCase()}${_album!.language.substring(1)}' : ''}',
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.45),
-                        fontSize: 12,
-                        letterSpacing: 0.3,
+                  // Song count info
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+                      child: Text(
+                        _album!.songs.length == 1
+                            ? 'Single • 1 song${year.isNotEmpty ? ' • $year' : ''}'
+                            : '${_album!.songs.length} songs'
+                                  '${year.isNotEmpty ? ' • $year' : ''}'
+                                  '${_album!.language.isNotEmpty ? ' • ${_album!.language[0].toUpperCase()}${_album!.language.substring(1)}' : ''}',
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.45),
+                          fontSize: 12,
+                          letterSpacing: 0.3,
+                        ),
                       ),
                     ),
                   ),
-                ),
 
-                // Track list
-                SliverFadeTransition(
-                  opacity: _fadeAnim,
-                  sliver: SliverList(
-                    delegate: SliverChildBuilderDelegate(
-                      (context, i) => _buildTrackTile(i),
-                      childCount: _album!.songs.length,
+                  // Track list
+                  SliverFadeTransition(
+                    opacity: _fadeAnim,
+                    sliver: SliverList(
+                      delegate: SliverChildBuilderDelegate(
+                        (context, i) => _buildTrackTile(i),
+                        childCount: _album!.songs.length,
+                      ),
                     ),
                   ),
-                ),
 
-                const SliverToBoxAdapter(child: SizedBox(height: 120)),
+                  const SliverToBoxAdapter(child: SizedBox(height: 120)),
+                ],
               ],
-            ],
+            ),
           ),
 
           // Floating MiniPlayer

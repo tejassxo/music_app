@@ -1,3 +1,5 @@
+import 'artist_profile_screen.dart';
+import '../services/dynamic_artist_service.dart';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -24,6 +26,7 @@ enum LibrarySection {
   spotify,
   history,
   device,
+  artists,
 }
 
 extension LibrarySectionExt on LibrarySection {
@@ -37,6 +40,8 @@ extension LibrarySectionExt on LibrarySection {
         return 'Downloaded';
       case LibrarySection.albums:
         return 'Albums';
+      case LibrarySection.artists:
+        return 'Artists';
       case LibrarySection.spotify:
         return 'Spotify Imports';
       case LibrarySection.history:
@@ -56,6 +61,8 @@ extension LibrarySectionExt on LibrarySection {
         return 'Downloaded';
       case LibrarySection.albums:
         return 'Albums';
+      case LibrarySection.artists:
+        return 'Artists';
       case LibrarySection.spotify:
         return 'Spotify';
       case LibrarySection.history:
@@ -75,6 +82,8 @@ extension LibrarySectionExt on LibrarySection {
         return Icons.download_for_offline_rounded;
       case LibrarySection.albums:
         return Icons.album_rounded;
+      case LibrarySection.artists:
+        return Icons.people_alt_rounded;
       case LibrarySection.spotify:
         return Icons.sync_alt_rounded;
       case LibrarySection.history:
@@ -219,6 +228,8 @@ class _LibraryScreenState extends State<LibraryScreen>
         return _musicService.downloadedSongs.length;
       case LibrarySection.albums:
         return _getDerivedAlbums().length;
+      case LibrarySection.artists:
+        return _prefs.followedArtists.length;
       case LibrarySection.device:
         return DeviceAudioService().deviceSongs.length;
       case LibrarySection.spotify:
@@ -848,6 +859,8 @@ class _LibraryScreenState extends State<LibraryScreen>
         return _buildDownloadedSection();
       case LibrarySection.albums:
         return _buildAlbumsSection(isWide: isWide);
+      case LibrarySection.artists:
+        return _buildFollowedArtistsSection();
       case LibrarySection.device:
         return _buildDeviceSection();
       case LibrarySection.spotify:
@@ -2802,6 +2815,157 @@ class _LibraryScreenState extends State<LibraryScreen>
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // SECTION: FOLLOWED ARTISTS
+  // ---------------------------------------------------------------------------
+
+  Widget _buildFollowedArtistsSection() {
+    final followedArtists = _prefs.followedArtists;
+    if (followedArtists.isEmpty) {
+      return _buildEmptyState(
+        icon: Icons.people_outline_rounded,
+        title: 'No followed artists yet',
+        subtitle: 'Follow your favorite artists from their profile screens.',
+      );
+    }
+
+    return DilSeScrollbar(
+      child: ListView.builder(
+        padding: const EdgeInsets.only(bottom: 160, top: 10),
+        itemCount: followedArtists.length + 1,
+        itemBuilder: (context, index) {
+          if (index == 0) {
+            return Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Text(
+                '${followedArtists.length} ${followedArtists.length == 1 ? 'Followed Artist' : 'Followed Artists'}',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: -0.2,
+                ),
+              ),
+            );
+          }
+
+          final artistName = followedArtists[index - 1];
+          final artistItem = DynamicArtistService().findArtist(artistName);
+
+          return ListTile(
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 4,
+            ),
+            leading: Container(
+              width: 52,
+              height: 52,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.18),
+                  width: 1.2,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.35),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: ClipOval(
+                child: artistItem != null && artistItem.imageUrl.isNotEmpty
+                    ? Image.network(
+                        artistItem.imageUrl,
+                        fit: BoxFit.cover,
+                        cacheWidth: 120,
+                        cacheHeight: 120,
+                        errorBuilder: (_, _, _) =>
+                            _buildArtistAvatarFallback(artistName),
+                      )
+                    : _buildArtistAvatarFallback(artistName),
+              ),
+            ),
+            title: Text(
+              artistItem?.name ?? artistName,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontWeight: FontWeight.w700,
+                color: Colors.white,
+                fontSize: 15,
+                letterSpacing: -0.2,
+              ),
+            ),
+            subtitle: Text(
+              artistItem?.genre ?? 'Followed Artist',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.55),
+                fontSize: 12.5,
+              ),
+            ),
+            trailing: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.15),
+                  width: 0.8,
+                ),
+              ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.check_rounded, size: 12, color: Colors.white70),
+                  SizedBox(width: 4),
+                  Text(
+                    'Following',
+                    style: TextStyle(
+                      color: Colors.white70,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            onTap: () {
+              HapticFeedback.lightImpact();
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => ArtistProfileScreen(
+                    artist: artistItem,
+                    artistName: artistItem?.name ?? artistName,
+                  ),
+                ),
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildArtistAvatarFallback(String name) {
+    final initial = name.trim().isNotEmpty ? name.trim()[0].toUpperCase() : 'A';
+    return Container(
+      color: const Color(0xFF1E1E28),
+      alignment: Alignment.center,
+      child: Text(
+        initial,
+        style: const TextStyle(
+          color: Colors.white70,
+          fontSize: 18,
+          fontWeight: FontWeight.w800,
+        ),
       ),
     );
   }

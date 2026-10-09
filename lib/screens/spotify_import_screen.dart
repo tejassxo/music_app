@@ -9,6 +9,7 @@ import '../services/music_service.dart';
 import '../services/api_config.dart';
 import '../services/spotify_import_service.dart';
 import '../services/app_file_picker.dart';
+import '../widgets/dilse_scrollbar.dart';
 
 class SpotifyImportScreen extends StatefulWidget {
   const SpotifyImportScreen({super.key});
@@ -20,6 +21,7 @@ class SpotifyImportScreen extends StatefulWidget {
 class _SpotifyImportScreenState extends State<SpotifyImportScreen> {
   static const Color spotifyGreen = Color(0xFF1DB954);
   final _appLinks = AppLinks();
+  final _scrollController = ScrollController();
   final _urlController = TextEditingController();
   final _csvController = TextEditingController();
   final _playlistNameController = TextEditingController();
@@ -49,6 +51,7 @@ class _SpotifyImportScreenState extends State<SpotifyImportScreen> {
   @override
   void dispose() {
     SpotifyImportService().removeListener(_onImportServiceChanged);
+    _scrollController.dispose();
     _urlController.dispose();
     _csvController.dispose();
     _playlistNameController.dispose();
@@ -509,130 +512,138 @@ class _SpotifyImportScreenState extends State<SpotifyImportScreen> {
           ),
           iconTheme: const IconThemeData(color: Colors.white),
         ),
-        body: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              if (isBackgroundActive) ...[
-                _buildBackgroundActiveDashboard(importService),
-              ] else if (hasBackgroundFinished) ...[
-                _buildBackgroundFinishedDashboard(importService),
-              ] else ...[
-                _buildModeSelector(),
-                const SizedBox(height: 20),
-                if (_selectedTabIndex == 0) ...[
-                  _buildExportifyHeader(),
-                  const SizedBox(height: 20),
-                  _buildExportifyInputs(),
+        body: DilSeScrollbar(
+          controller: _scrollController,
+          bottomPadding: 30.0,
+          child: SingleChildScrollView(
+            controller: _scrollController,
+            padding: const EdgeInsets.symmetric(
+              horizontal: 20.0,
+              vertical: 16.0,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (isBackgroundActive) ...[
+                  _buildBackgroundActiveDashboard(importService),
+                ] else if (hasBackgroundFinished) ...[
+                  _buildBackgroundFinishedDashboard(importService),
                 ] else ...[
-                  _buildUrlHeader(),
+                  _buildModeSelector(),
                   const SizedBox(height: 20),
-                  _buildUrlInputs(),
-                ],
-                if (_statusMessage.isNotEmpty) ...[
-                  const SizedBox(height: 20),
-                  _buildStaticStatusCard(),
-                ],
-              ],
-              const SizedBox(height: 24),
-
-              // Optional Advanced OAuth Accordion
-              Theme(
-                data: Theme.of(
-                  context,
-                ).copyWith(dividerColor: Colors.transparent),
-                child: ExpansionTile(
-                  initiallyExpanded: _showAdvancedOAuth,
-                  onExpansionChanged: (val) =>
-                      setState(() => _showAdvancedOAuth = val),
-                  title: Text(
-                    'Developer Options (Spotify Account Login)',
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.5),
-                      fontSize: 13,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 12.0),
-                      child: Text(
-                        'Requires Spotify Developer Client credentials configured on your backend server.',
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.4),
-                          fontSize: 12,
-                        ),
-                      ),
-                    ),
-                    if (_accessToken == null)
-                      OutlinedButton.icon(
-                        icon: const Icon(Icons.login_rounded, size: 18),
-                        label: const Text('Log In With Spotify Account'),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: spotifyGreen,
-                          side: BorderSide(
-                            color: spotifyGreen.withValues(alpha: 0.4),
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                        ),
-                        onPressed: _isLoading ? null : _loginWithSpotify,
-                      )
-                    else ...[
-                      Text(
-                        'Your Spotify Playlists (${_userPlaylists.length})',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      ListView.builder(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        itemCount: _userPlaylists.length,
-                        itemBuilder: (context, index) {
-                          final pl = _userPlaylists[index];
-                          return ListTile(
-                            contentPadding: EdgeInsets.zero,
-                            title: Text(
-                              pl['name'] ?? 'Unknown',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 14,
-                              ),
-                            ),
-                            subtitle: Text(
-                              '${pl['total_tracks']} tracks',
-                              style: const TextStyle(
-                                color: Colors.white54,
-                                fontSize: 12,
-                              ),
-                            ),
-                            trailing: IconButton(
-                              icon: const Icon(
-                                Icons.download_rounded,
-                                color: spotifyGreen,
-                              ),
-                              onPressed: _isLoading
-                                  ? null
-                                  : () => _startImport(
-                                      playlistId: pl['id'] ?? '',
-                                      playlistName: pl['name'] ?? 'Playlist',
-                                      isPublic: false,
-                                    ),
-                            ),
-                          );
-                        },
-                      ),
-                    ],
+                  if (_selectedTabIndex == 0) ...[
+                    _buildExportifyHeader(),
+                    const SizedBox(height: 20),
+                    _buildExportifyInputs(),
+                  ] else ...[
+                    _buildUrlHeader(),
+                    const SizedBox(height: 20),
+                    _buildUrlInputs(),
                   ],
+                  if (_statusMessage.isNotEmpty) ...[
+                    const SizedBox(height: 20),
+                    _buildStaticStatusCard(),
+                  ],
+                ],
+                const SizedBox(height: 24),
+
+                // Optional Advanced OAuth Accordion
+                Theme(
+                  data: Theme.of(
+                    context,
+                  ).copyWith(dividerColor: Colors.transparent),
+                  child: ExpansionTile(
+                    initiallyExpanded: _showAdvancedOAuth,
+                    onExpansionChanged: (val) =>
+                        setState(() => _showAdvancedOAuth = val),
+                    title: Text(
+                      'Developer Options (Spotify Account Login)',
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.5),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 12.0),
+                        child: Text(
+                          'Requires Spotify Developer Client credentials configured on your backend server.',
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.4),
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                      if (_accessToken == null)
+                        OutlinedButton.icon(
+                          icon: const Icon(Icons.login_rounded, size: 18),
+                          label: const Text('Log In With Spotify Account'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: spotifyGreen,
+                            side: BorderSide(
+                              color: spotifyGreen.withValues(alpha: 0.4),
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                          onPressed: _isLoading ? null : _loginWithSpotify,
+                        )
+                      else ...[
+                        Text(
+                          'Your Spotify Playlists (${_userPlaylists.length})',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        ListView.builder(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          itemCount: _userPlaylists.length,
+                          itemBuilder: (context, index) {
+                            final pl = _userPlaylists[index];
+                            return ListTile(
+                              contentPadding: EdgeInsets.zero,
+                              title: Text(
+                                pl['name'] ?? 'Unknown',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 14,
+                                ),
+                              ),
+                              subtitle: Text(
+                                '${pl['total_tracks']} tracks',
+                                style: const TextStyle(
+                                  color: Colors.white54,
+                                  fontSize: 12,
+                                ),
+                              ),
+                              trailing: IconButton(
+                                icon: const Icon(
+                                  Icons.download_rounded,
+                                  color: spotifyGreen,
+                                ),
+                                onPressed: _isLoading
+                                    ? null
+                                    : () => _startImport(
+                                        playlistId: pl['id'] ?? '',
+                                        playlistName: pl['name'] ?? 'Playlist',
+                                        isPublic: false,
+                                      ),
+                              ),
+                            );
+                          },
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

@@ -14,6 +14,7 @@ class AppUpdateInfo {
   final String currentVersion;
   final String currentBuildNumber;
   final bool hasUpdate;
+  final String? releasePageUrl;
 
   AppUpdateInfo({
     required this.tagName,
@@ -24,6 +25,7 @@ class AppUpdateInfo {
     required this.currentVersion,
     required this.currentBuildNumber,
     required this.hasUpdate,
+    this.releasePageUrl,
   });
 
   String get formattedSize {
@@ -109,6 +111,10 @@ class UpdateService {
       final changelog =
           (data['body'] as String? ?? 'Bug fixes and performance improvements.')
               .trim();
+      final htmlUrl = (data['html_url'] as String? ?? '').trim();
+      final releasePage = htmlUrl.isNotEmpty
+          ? htmlUrl
+          : 'https://github.com/$_githubRepoOwner/$_githubRepoName/releases/tag/$tagName';
 
       // Find APK asset in release
       final assets = (data['assets'] as List<dynamic>? ?? []);
@@ -124,7 +130,7 @@ class UpdateService {
         }
       }
 
-      if (apkDownloadUrl == null || apkDownloadUrl.isEmpty) {
+      if (!kIsWeb && (apkDownloadUrl == null || apkDownloadUrl.isEmpty)) {
         debugPrint(
           '[UpdateService] No APK asset found in latest GitHub release ($tagName)',
         );
@@ -141,11 +147,12 @@ class UpdateService {
         tagName: tagName,
         releaseName: releaseName,
         changelog: changelog,
-        downloadUrl: apkDownloadUrl,
+        downloadUrl: apkDownloadUrl ?? releasePage,
         apkSizeBytes: apkSize,
         currentVersion: currentVersion,
         currentBuildNumber: currentBuildNumber,
         hasUpdate: hasUpdate,
+        releasePageUrl: releasePage,
       );
     } catch (e) {
       debugPrint('[UpdateService] Error checking for updates: $e');

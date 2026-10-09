@@ -1,3 +1,5 @@
+import 'fuzzy_search_service.dart';
+
 /// Representation of playlist search results distinguishing artist matches from title matches
 class PlaylistSearchResult {
   final List<int> matchedIndices;
@@ -461,6 +463,20 @@ class PlaylistArtistFilter {
 
       if (titleMatches || authorMatches) {
         matchedIndices.add(i);
+      }
+    }
+
+    // Step 3: Typo-tolerant fallback powered by FuzzySearchService (Bitap algorithm)
+    if (matchedIndices.isEmpty && cleanQ.length >= 3) {
+      final fuzzyMatches = FuzzySearchService.searchTrackMaps(songs, trimmed);
+      if (fuzzyMatches.isNotEmpty) {
+        final fuzzyIds = fuzzyMatches.map((m) => m['id']).toSet();
+        for (int i = 0; i < songs.length; i++) {
+          final id = songs[i]['id'];
+          if (id != null && fuzzyIds.contains(id)) {
+            matchedIndices.add(i);
+          }
+        }
       }
     }
 

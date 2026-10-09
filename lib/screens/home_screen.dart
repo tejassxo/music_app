@@ -15,6 +15,7 @@ import 'profile_screen.dart';
 import 'album_screen.dart';
 import 'dilse_capsule_screen.dart';
 import '../models/jio_album.dart';
+import '../models/song_item.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -1678,89 +1679,92 @@ class _HomeScreenState extends State<HomeScreen>
                 width: 1,
               ),
             ),
-            child: ListTile(
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 12,
-                vertical: 2,
-              ),
-              leading: ClipRRect(
-                borderRadius: BorderRadius.circular(10),
-                child: Image.network(
-                  hdThumbnail,
-                  width: 50,
-                  height: 50,
-                  fit: BoxFit.cover,
-                  cacheWidth: 120,
-                  cacheHeight: 120,
-                  errorBuilder: (_, _, _) => Image.network(
-                    song.thumbnails.lowResUrl,
+            child: Material(
+              color: Colors.transparent,
+              child: ListTile(
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 2,
+                ),
+                leading: ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: Image.network(
+                    hdThumbnail,
                     width: 50,
                     height: 50,
                     fit: BoxFit.cover,
                     cacheWidth: 120,
                     cacheHeight: 120,
-                  ),
-                ),
-              ),
-              title: Text(
-                song.title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 14,
-                  letterSpacing: -0.2,
-                ),
-              ),
-              subtitle: Text(
-                song.author,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.5),
-                  fontSize: 12,
-                ),
-              ),
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  IconButton(
-                    icon: const Icon(
-                      Icons.more_vert_rounded,
-                      color: Colors.white38,
-                      size: 20,
-                    ),
-                    onPressed: () {
-                      showSongOptionsBottomSheet(context, song);
-                    },
-                  ),
-                  Container(
-                    width: 34,
-                    height: 34,
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.10),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Center(
-                      child:
-                          (_musicService.currentSong?.id.value ==
-                                  song.id.value &&
-                              _musicService.isPlaying)
-                          ? const AnimatedEqualizer(isPlaying: true, size: 16)
-                          : const Icon(
-                              Icons.play_arrow_rounded,
-                              color: Colors.white,
-                              size: 22,
-                            ),
+                    errorBuilder: (_, _, _) => Image.network(
+                      song.thumbnails.lowResUrl,
+                      width: 50,
+                      height: 50,
+                      fit: BoxFit.cover,
+                      cacheWidth: 120,
+                      cacheHeight: 120,
                     ),
                   ),
-                ],
+                ),
+                title: Text(
+                  song.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14,
+                    letterSpacing: -0.2,
+                  ),
+                ),
+                subtitle: Text(
+                  song.author,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.5),
+                    fontSize: 12,
+                  ),
+                ),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      icon: const Icon(
+                        Icons.more_vert_rounded,
+                        color: Colors.white38,
+                        size: 20,
+                      ),
+                      onPressed: () {
+                        showSongOptionsBottomSheet(context, song);
+                      },
+                    ),
+                    Container(
+                      width: 34,
+                      height: 34,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.10),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Center(
+                        child:
+                            (_musicService.currentSong?.id.value ==
+                                    song.id.value &&
+                                _musicService.isPlaying)
+                            ? const AnimatedEqualizer(isPlaying: true, size: 16)
+                            : const Icon(
+                                Icons.play_arrow_rounded,
+                                color: Colors.white,
+                                size: 22,
+                              ),
+                      ),
+                    ),
+                  ],
+                ),
+                onTap: () {
+                  HapticFeedback.lightImpact();
+                  _musicService.playPlaylist(displayList, index);
+                },
               ),
-              onTap: () {
-                HapticFeedback.lightImpact();
-                _musicService.playPlaylist(displayList, index);
-              },
             ),
           );
         }).toList(),
@@ -1786,78 +1790,67 @@ class _HomeScreenState extends State<HomeScreen>
                 width: 1,
               ),
             ),
-            child: ListTile(
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 12,
-                vertical: 2,
-              ),
-              leading: ClipRRect(
-                borderRadius: BorderRadius.circular(10),
-                child: Image.network(
-                  song['thumbnail'] ??
-                      MusicService.getHdThumbnail(song['id'] ?? ''),
-                  width: 50,
-                  height: 50,
-                  fit: BoxFit.cover,
-                  cacheWidth: 120,
-                  cacheHeight: 120,
-                  errorBuilder: (context, error, stackTrace) => Container(
+            child: Material(
+              color: Colors.transparent,
+              child: ListTile(
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 2,
+                ),
+                leading: ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: Image.network(
+                    song['thumbnail'] ??
+                        MusicService.getHdThumbnail(song['id'] ?? ''),
                     width: 50,
                     height: 50,
-                    color: Colors.white10,
-                    child: const Icon(
-                      Icons.music_note_rounded,
-                      color: Colors.white38,
+                    fit: BoxFit.cover,
+                    cacheWidth: 120,
+                    cacheHeight: 120,
+                    errorBuilder: (context, error, stackTrace) => Container(
+                      width: 50,
+                      height: 50,
+                      color: Colors.white10,
+                      child: const Icon(
+                        Icons.music_note_rounded,
+                        color: Colors.white38,
+                      ),
                     ),
                   ),
                 ),
-              ),
-              title: Text(
-                song['title'] ?? 'Unknown Track',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 14,
-                  letterSpacing: -0.2,
-                ),
-              ),
-              subtitle: Text(
-                song['author'] ?? 'Unknown Artist',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.5),
-                  fontSize: 12,
-                ),
-              ),
-              trailing: const Icon(
-                Icons.favorite_rounded,
-                color: Color(0xFFFA2D48),
-                size: 22,
-              ),
-              onTap: () {
-                HapticFeedback.lightImpact();
-                final songId = song['id'] ?? '';
-                if (songId.isEmpty) return;
-                final video = Video(
-                  VideoId(songId),
+                title: Text(
                   song['title'] ?? 'Unknown Track',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14,
+                    letterSpacing: -0.2,
+                  ),
+                ),
+                subtitle: Text(
                   song['author'] ?? 'Unknown Artist',
-                  ChannelId('UC0WP5P-fwGlLyO4yOE76T8g'),
-                  DateTime.now(),
-                  '',
-                  null,
-                  '',
-                  null,
-                  ThumbnailSet(songId),
-                  null,
-                  Engagement(0, null, null),
-                  false,
-                );
-                _musicService.playSong(video);
-              },
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.5),
+                    fontSize: 12,
+                  ),
+                ),
+                trailing: const Icon(
+                  Icons.favorite_rounded,
+                  color: Color(0xFFFA2D48),
+                  size: 22,
+                ),
+                onTap: () {
+                  HapticFeedback.lightImpact();
+                  final songId = song['id'] ?? '';
+                  if (songId.isEmpty) return;
+                  final video = SongItem.fromJson(song).toVideo();
+                  _musicService.playSong(video);
+                },
+              ),
             ),
           );
         }).toList(),

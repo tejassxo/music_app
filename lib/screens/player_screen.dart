@@ -1,4 +1,3 @@
-import 'dart:io' show Platform;
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -18,6 +17,10 @@ import '../widgets/bug_report_button.dart';
 import '../services/bug_report_service.dart';
 import '../services/screen_wake_service.dart';
 import '../widgets/responsive_wrapper.dart';
+import 'album_screen.dart';
+import 'artist_profile_screen.dart';
+import '../services/dynamic_artist_service.dart';
+import '../services/canonical_song_dedup.dart';
 
 enum LandscapeActiveTab { none, lyrics, queue, more }
 
@@ -580,6 +583,144 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
   }
 
+  Future<void> _navigateToAlbum(Video song) async {
+    HapticFeedback.lightImpact();
+
+    // 1. Direct in-memory cached JioAlbum
+    final cachedAlbum = MusicService.getCachedAlbum(song.id.value);
+    if (cachedAlbum != null && cachedAlbum.songs.isNotEmpty) {
+      if (!mounted) return;
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => AlbumScreen(
+            album: cachedAlbum,
+            albumId: cachedAlbum.id,
+            albumTitle: cachedAlbum.title,
+            albumArtwork: cachedAlbum.artwork,
+            albumArtist: cachedAlbum.artist,
+          ),
+        ),
+      );
+      return;
+    }
+
+    // 2. Cached album ID or title, or extracted movie title
+    final cachedId = MusicService.getCachedAlbumId(song.id.value);
+    final cachedTitle =
+        MusicService.getCachedAlbumTitle(song.id.value) ??
+        MusicService.extractMovieOrAlbumTitle(song.title);
+
+    if ((cachedId != null && cachedId.isNotEmpty) ||
+        (cachedTitle != null && cachedTitle.isNotEmpty)) {
+      if (!mounted) return;
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => AlbumScreen(
+            albumId: cachedId ?? '',
+            albumTitle: cachedTitle ?? '',
+            albumArtwork: MusicService.getHdThumbnail(song.id.value),
+            albumArtist: song.author,
+          ),
+        ),
+      );
+      return;
+    }
+
+    // 3. On-demand resolution for tracks without pre-cached album tags
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Finding album for this track...'),
+        duration: Duration(milliseconds: 1500),
+      ),
+    );
+
+    final resolved = await _musicService.resolveAlbumForSong(song);
+    if (!mounted) return;
+
+    if (resolved != null && resolved.songs.isNotEmpty) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => AlbumScreen(
+            album: resolved,
+            albumId: resolved.id,
+            albumTitle: resolved.title,
+            albumArtwork: resolved.artwork,
+            albumArtist: resolved.artist,
+          ),
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('No album found for "${song.title}".'),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
+  String _resolveArtistName(Video song) {
+    final direct = song.author.trim();
+
+    // 1. Direct match with curated artist catalog or aliases
+    if (direct.isNotEmpty && direct.toLowerCase() != 'unknown artist') {
+      final directMatch = DynamicArtistService().findArtist(direct);
+      if (directMatch != null) return directMatch.name;
+    }
+
+    // 2. Extract artist candidate from song title / context keywords
+    final ctx = CanonicalSongDedup.extractSongContext(song.title, song.author);
+    final ctxArtist = (ctx['artist'] as String?)?.trim() ?? '';
+    if (ctxArtist.isNotEmpty) {
+      final ctxMatch = DynamicArtistService().findArtist(ctxArtist);
+      if (ctxMatch != null) return ctxMatch.name;
+
+      final lowerAuthor = direct.toLowerCase();
+      // If author is a channel or record label, prefer the extracted artist from title
+      if (lowerAuthor.isEmpty ||
+          lowerAuthor.contains('music') ||
+          lowerAuthor.contains('records') ||
+          lowerAuthor.contains('series') ||
+          lowerAuthor.contains('channel') ||
+          lowerAuthor.contains('media') ||
+          lowerAuthor.contains('studios') ||
+          lowerAuthor.contains('audio') ||
+          lowerAuthor.contains('label') ||
+          lowerAuthor.contains('company')) {
+        return ctxArtist;
+      }
+    }
+
+    // 3. Fallback to direct author if non-empty, otherwise ctxArtist or 'Unknown Artist'
+    if (direct.isNotEmpty && direct.toLowerCase() != 'unknown artist') {
+      return direct;
+    }
+    if (ctxArtist.isNotEmpty) {
+      return ctxArtist;
+    }
+    return 'Unknown Artist';
+  }
+
+  void _navigateToArtist(Video song) {
+    HapticFeedback.lightImpact();
+    final artistName = _resolveArtistName(song);
+    final artistItem = DynamicArtistService().findArtist(artistName);
+
+    if (!mounted) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ArtistProfileScreen(
+          artist: artistItem,
+          artistName: artistItem?.name ?? artistName,
+        ),
+      ),
+    );
+  }
+
   void _showCurrentSongActionsSheet(BuildContext context, Video song) {
     HapticFeedback.lightImpact();
     final hdThumbnail = MusicService.getHdThumbnail(song.id.value);
@@ -607,246 +748,301 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 ),
                 border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
               ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Drag pill
-                  Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: Colors.white24,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
+              child: SafeArea(
+                top: false,
+                child: SingleChildScrollView(
+                  physics: const BouncingScrollPhysics(),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Drag pill
+                      Container(
+                        width: 40,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: Colors.white24,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
 
-                  // Song Header Info
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    child: Row(
-                      children: [
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(12),
-                          child: Image.network(
-                            hdThumbnail,
-                            width: 52,
-                            height: 52,
-                            fit: BoxFit.cover,
-                            errorBuilder: (_, _, _) => Container(
-                              width: 52,
-                              height: 52,
-                              color: const Color(0xFF1E1E28),
-                              child: const Icon(
-                                Icons.music_note,
-                                color: Colors.white54,
+                      // Song Header Info
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        child: Row(
+                          children: [
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(12),
+                              child: Image.network(
+                                hdThumbnail,
+                                width: 52,
+                                height: 52,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, _, _) => Container(
+                                  width: 52,
+                                  height: 52,
+                                  color: const Color(0xFF1E1E28),
+                                  child: const Icon(
+                                    Icons.music_note,
+                                    color: Colors.white54,
+                                  ),
+                                ),
                               ),
                             ),
-                          ),
+                            const SizedBox(width: 14),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    song.title,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 15.5,
+                                      fontWeight: FontWeight.w700,
+                                      letterSpacing: -0.2,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 3),
+                                  Text(
+                                    song.author,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      color: Colors.white.withValues(
+                                        alpha: 0.65,
+                                      ),
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                         ),
-                        const SizedBox(width: 14),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                song.title,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
+                      ),
+
+                      const SizedBox(height: 14),
+                      const Divider(color: Colors.white10, height: 1),
+                      const SizedBox(height: 8),
+
+                      // 1. Sleep Timer
+                      _buildSongActionTile(
+                        icon: Icons.bedtime_rounded,
+                        iconColor: _musicService.isSleepTimerActive
+                            ? Theme.of(context).primaryColor
+                            : Colors.white,
+                        title: 'Sleep Timer',
+                        subtitle: _musicService.isSleepTimerActive
+                            ? 'Active (${_musicService.sleepTimerLabel})'
+                            : 'Set auto-stop timer',
+                        trailing: _musicService.isSleepTimerActive
+                            ? Icon(
+                                Icons.check_circle_rounded,
+                                color: Theme.of(context).primaryColor,
+                                size: 20,
+                              )
+                            : const Icon(
+                                Icons.chevron_right_rounded,
+                                color: Colors.white30,
+                                size: 20,
+                              ),
+                        onTap: () {
+                          Navigator.pop(ctx);
+                          _showSleepTimerSheet(context);
+                        },
+                      ),
+
+                      // 2. Add to Playlist
+                      _buildSongActionTile(
+                        icon: Icons.playlist_add_rounded,
+                        title: 'Add to Playlist',
+                        subtitle: 'Save to your custom playlists',
+                        trailing: const Icon(
+                          Icons.chevron_right_rounded,
+                          color: Colors.white30,
+                          size: 20,
+                        ),
+                        onTap: () {
+                          Navigator.pop(ctx);
+                          showAddToPlaylistSheet(context, song);
+                        },
+                      ),
+
+                      // 2b. View Artist
+                      _buildSongActionTile(
+                        icon: Icons.person_rounded,
+                        iconColor: const Color(0xFF1DB954),
+                        title: 'View Artist',
+                        subtitle:
+                            'Explore full discography for ${_resolveArtistName(song)}',
+                        trailing: const Icon(
+                          Icons.chevron_right_rounded,
+                          color: Colors.white30,
+                          size: 20,
+                        ),
+                        onTap: () {
+                          Navigator.pop(ctx);
+                          _navigateToArtist(song);
+                        },
+                      ),
+
+                      // 2c. Go to Album
+                      _buildSongActionTile(
+                        icon: Icons.album_rounded,
+                        iconColor: const Color(0xFF8E2DE2),
+                        title: 'Go to Album',
+                        subtitle:
+                            MusicService.getCachedAlbumTitle(song.id.value) ??
+                            MusicService.extractMovieOrAlbumTitle(song.title) ??
+                            'View full album & tracks',
+                        trailing: const Icon(
+                          Icons.chevron_right_rounded,
+                          color: Colors.white30,
+                          size: 20,
+                        ),
+                        onTap: () {
+                          Navigator.pop(ctx);
+                          _navigateToAlbum(song);
+                        },
+                      ),
+
+                      // 3. Like Song
+                      _buildSongActionTile(
+                        icon: isLiked
+                            ? Icons.favorite_rounded
+                            : Icons.favorite_border_rounded,
+                        iconColor: isLiked
+                            ? const Color(0xFFFA2D48)
+                            : Colors.white,
+                        title: isLiked ? 'Liked Song' : 'Like Song',
+                        subtitle: isLiked
+                            ? 'Saved in your favorites ❤️'
+                            : 'Save to Liked Songs',
+                        trailing: isLiked
+                            ? const Icon(
+                                Icons.check_rounded,
+                                color: Color(0xFFFA2D48),
+                                size: 20,
+                              )
+                            : null,
+                        onTap: () {
+                          HapticFeedback.lightImpact();
+                          _musicService.toggleLike(song);
+                          setSheetState(() {});
+                          setState(() {});
+                        },
+                      ),
+
+                      // 4. Download
+                      _buildSongActionTile(
+                        icon: isDownloaded
+                            ? Icons.download_done_rounded
+                            : Icons.download_for_offline_rounded,
+                        iconColor: isDownloaded
+                            ? const Color(0xFF1DB954)
+                            : Colors.white,
+                        title: isDownloaded ? 'Downloaded' : 'Download',
+                        subtitle: isDownloaded
+                            ? 'Available offline'
+                            : 'Save audio file locally',
+                        trailing: _musicService.isDownloading
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
                                   color: Colors.white,
-                                  fontSize: 15.5,
-                                  fontWeight: FontWeight.w700,
-                                  letterSpacing: -0.2,
+                                ),
+                              )
+                            : (isDownloaded
+                                  ? const Icon(
+                                      Icons.check_rounded,
+                                      color: Color(0xFF1DB954),
+                                      size: 20,
+                                    )
+                                  : null),
+                        onTap: () async {
+                          if (isDownloaded) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                  'Song is already downloaded offline',
                                 ),
                               ),
-                              const SizedBox(height: 3),
-                              Text(
-                                song.author,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  color: Colors.white.withValues(alpha: 0.65),
-                                  fontSize: 13,
+                            );
+                            return;
+                          }
+                          Navigator.pop(ctx);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Starting download...'),
+                            ),
+                          );
+                          final success = await _musicService.downloadSong(
+                            song,
+                          );
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  success
+                                      ? 'Saved to Offline Library!'
+                                      : 'Download failed.',
                                 ),
                               ),
-                            ],
-                          ),
+                            );
+                          }
+                        },
+                      ),
+
+                      // 5. Share
+                      _buildSongActionTile(
+                        icon: Icons.share_rounded,
+                        title: 'Share',
+                        subtitle: 'Copy link or song details',
+                        trailing: const Icon(
+                          Icons.copy_rounded,
+                          color: Colors.white30,
+                          size: 18,
                         ),
-                      ],
-                    ),
-                  ),
-
-                  const SizedBox(height: 14),
-                  const Divider(color: Colors.white10, height: 1),
-                  const SizedBox(height: 8),
-
-                  // 1. Sleep Timer
-                  _buildSongActionTile(
-                    icon: Icons.bedtime_rounded,
-                    iconColor: _musicService.isSleepTimerActive
-                        ? Theme.of(context).primaryColor
-                        : Colors.white,
-                    title: 'Sleep Timer',
-                    subtitle: _musicService.isSleepTimerActive
-                        ? 'Active (${_musicService.sleepTimerLabel})'
-                        : 'Set auto-stop timer',
-                    trailing: _musicService.isSleepTimerActive
-                        ? Icon(
-                            Icons.check_circle_rounded,
-                            color: Theme.of(context).primaryColor,
-                            size: 20,
-                          )
-                        : const Icon(
-                            Icons.chevron_right_rounded,
-                            color: Colors.white30,
-                            size: 20,
-                          ),
-                    onTap: () {
-                      Navigator.pop(ctx);
-                      _showSleepTimerSheet(context);
-                    },
-                  ),
-
-                  // 2. Add to Playlist
-                  _buildSongActionTile(
-                    icon: Icons.playlist_add_rounded,
-                    title: 'Add to Playlist',
-                    subtitle: 'Save to your custom playlists',
-                    trailing: const Icon(
-                      Icons.chevron_right_rounded,
-                      color: Colors.white30,
-                      size: 20,
-                    ),
-                    onTap: () {
-                      Navigator.pop(ctx);
-                      showAddToPlaylistSheet(context, song);
-                    },
-                  ),
-
-                  // 3. Like Song
-                  _buildSongActionTile(
-                    icon: isLiked
-                        ? Icons.favorite_rounded
-                        : Icons.favorite_border_rounded,
-                    iconColor: isLiked ? const Color(0xFFFA2D48) : Colors.white,
-                    title: isLiked ? 'Liked Song' : 'Like Song',
-                    subtitle: isLiked
-                        ? 'Saved in your favorites ❤️'
-                        : 'Save to Liked Songs',
-                    trailing: isLiked
-                        ? const Icon(
-                            Icons.check_rounded,
-                            color: Color(0xFFFA2D48),
-                            size: 20,
-                          )
-                        : null,
-                    onTap: () {
-                      HapticFeedback.lightImpact();
-                      _musicService.toggleLike(song);
-                      setSheetState(() {});
-                      setState(() {});
-                    },
-                  ),
-
-                  // 4. Download
-                  _buildSongActionTile(
-                    icon: isDownloaded
-                        ? Icons.download_done_rounded
-                        : Icons.download_for_offline_rounded,
-                    iconColor: isDownloaded
-                        ? const Color(0xFF1DB954)
-                        : Colors.white,
-                    title: isDownloaded ? 'Downloaded' : 'Download',
-                    subtitle: isDownloaded
-                        ? 'Available offline'
-                        : 'Save audio file locally',
-                    trailing: _musicService.isDownloading
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
+                        onTap: () {
+                          Navigator.pop(ctx);
+                          Clipboard.setData(
+                            ClipboardData(
+                              text:
+                                  '${song.title} - ${song.author}\n${song.url}',
                             ),
-                          )
-                        : (isDownloaded
-                              ? const Icon(
-                                  Icons.check_rounded,
-                                  color: Color(0xFF1DB954),
-                                  size: 20,
-                                )
-                              : null),
-                    onTap: () async {
-                      if (isDownloaded) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Song is already downloaded offline'),
-                          ),
-                        );
-                        return;
-                      }
-                      Navigator.pop(ctx);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Starting download...')),
-                      );
-                      final success = await _musicService.downloadSong(song);
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              success
-                                  ? 'Saved to Offline Library!'
-                                  : 'Download failed.',
+                          );
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Song link copied to clipboard!'),
                             ),
-                          ),
-                        );
-                      }
-                    },
-                  ),
+                          );
+                        },
+                      ),
 
-                  // 5. Share
-                  _buildSongActionTile(
-                    icon: Icons.share_rounded,
-                    title: 'Share',
-                    subtitle: 'Copy link or song details',
-                    trailing: const Icon(
-                      Icons.copy_rounded,
-                      color: Colors.white30,
-                      size: 18,
-                    ),
-                    onTap: () {
-                      Navigator.pop(ctx);
-                      Clipboard.setData(
-                        ClipboardData(
-                          text: '${song.title} - ${song.author}\n${song.url}',
+                      // 6. Report a Bug (Music player options at last)
+                      _buildSongActionTile(
+                        icon: Icons.bug_report_rounded,
+                        iconColor: Colors.redAccent,
+                        title: 'Report a Bug',
+                        subtitle: 'Found an issue with playback or app?',
+                        trailing: const Icon(
+                          Icons.chevron_right_rounded,
+                          color: Colors.white30,
+                          size: 20,
                         ),
-                      );
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Song link copied to clipboard!'),
-                        ),
-                      );
-                    },
+                        onTap: () {
+                          Navigator.pop(ctx);
+                          _reportBug(context, song: song);
+                        },
+                      ),
+                    ],
                   ),
-
-                  // 6. Report a Bug (Music player options at last)
-                  _buildSongActionTile(
-                    icon: Icons.bug_report_rounded,
-                    iconColor: Colors.redAccent,
-                    title: 'Report a Bug',
-                    subtitle: 'Found an issue with playback or app?',
-                    trailing: const Icon(
-                      Icons.chevron_right_rounded,
-                      color: Colors.white30,
-                      size: 20,
-                    ),
-                    onTap: () {
-                      Navigator.pop(ctx);
-                      _reportBug(context, song: song);
-                    },
-                  ),
-                ],
+                ),
               ),
             );
           },
@@ -898,9 +1094,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   Future<void> _reportBug(BuildContext context, {Video? song}) async {
-    final osInfo = kIsWeb
-        ? 'Web Browser'
-        : '${Platform.operatingSystem} ${Platform.operatingSystemVersion}';
+    final osInfo = kIsWeb ? 'Web Browser' : defaultTargetPlatform.name;
 
     final songDetails = song != null
         ? '\n\n--- Current Playing Song ---\n'
@@ -1654,32 +1848,37 @@ class _PlayerScreenState extends State<PlayerScreen> {
                                       ),
                                     ),
                                     const SizedBox(width: 8),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 6,
-                                        vertical: 2,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: Colors.white.withValues(
-                                          alpha: 0.12,
+                                    FittedBox(
+                                      fit: BoxFit.scaleDown,
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 6,
+                                          vertical: 2,
                                         ),
-                                        borderRadius: BorderRadius.circular(4),
-                                        border: Border.all(
+                                        decoration: BoxDecoration(
                                           color: Colors.white.withValues(
-                                            alpha: 0.15,
+                                            alpha: 0.12,
                                           ),
-                                          width: 0.5,
+                                          borderRadius: BorderRadius.circular(
+                                            4,
+                                          ),
+                                          border: Border.all(
+                                            color: Colors.white.withValues(
+                                              alpha: 0.15,
+                                            ),
+                                            width: 0.5,
+                                          ),
                                         ),
-                                      ),
-                                      child: Text(
-                                        _musicService
-                                            .activeStreamInfo
-                                            .displayTag,
-                                        style: const TextStyle(
-                                          color: Colors.white70,
-                                          fontSize: 9.5,
-                                          fontWeight: FontWeight.w700,
-                                          letterSpacing: 0.4,
+                                        child: Text(
+                                          _musicService
+                                              .activeStreamInfo
+                                              .displayTag,
+                                          style: const TextStyle(
+                                            color: Colors.white70,
+                                            fontSize: 9.5,
+                                            fontWeight: FontWeight.w700,
+                                            letterSpacing: 0.4,
+                                          ),
                                         ),
                                       ),
                                     ),
@@ -3103,6 +3302,23 @@ class _PlayerScreenState extends State<PlayerScreen> {
             subtitle: 'Save to custom playlist',
             iconColor: Colors.amberAccent,
             onTap: () => showAddToPlaylistSheet(context, song),
+          ),
+          _buildLandscapeMoreCard(
+            icon: Icons.person_rounded,
+            title: 'View Artist',
+            subtitle: _resolveArtistName(song),
+            iconColor: const Color(0xFF1DB954),
+            onTap: () => _navigateToArtist(song),
+          ),
+          _buildLandscapeMoreCard(
+            icon: Icons.album_rounded,
+            title: 'Go to Album',
+            subtitle:
+                MusicService.getCachedAlbumTitle(song.id.value) ??
+                MusicService.extractMovieOrAlbumTitle(song.title) ??
+                'View full album',
+            iconColor: const Color(0xFF8E2DE2),
+            onTap: () => _navigateToAlbum(song),
           ),
           _buildLandscapeMoreCard(
             icon: Icons.bug_report_rounded,

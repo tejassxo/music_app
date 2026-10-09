@@ -33,7 +33,7 @@ class WebPlayerBridge {
 
   static void seek(Duration position) {}
 
-  static void setVolume(double volumePercent) {}
+  static void setVolume(double volume) {}
 
   static void crossfade({
     required String videoId,

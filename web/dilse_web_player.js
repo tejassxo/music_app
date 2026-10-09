@@ -885,7 +885,7 @@
     window.dilseCurrentStreamUrl = '';
 
     const isDirectAudio = streamToPlay && typeof streamToPlay === 'string' && streamToPlay.startsWith('http') &&
-      (streamToPlay.includes('.mp4') || streamToPlay.includes('.m4a') || streamToPlay.includes('saavncdn') || streamToPlay.includes('media-cdn'));
+      (streamToPlay.includes('.mp4') || streamToPlay.includes('.m4a') || streamToPlay.includes('saavncdn') || streamToPlay.includes('media-cdn') || streamToPlay.includes('workers.dev'));
 
     if (isDirectAudio) {
       console.log('[DilSe Web Player] Direct 320k stream provided, playing immediately:', streamToPlay);

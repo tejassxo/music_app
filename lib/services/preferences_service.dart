@@ -224,6 +224,10 @@ class PreferencesService extends ChangeNotifier {
   // Search History
   List<String> _searchHistory = [];
 
+  // Followed Artists (Independent of Daily Mix & Listening History)
+  static const String _followedArtistsKey = 'followed_artists_v1';
+  final Set<String> _followedArtists = {};
+
   // Listening History
   List<Map<String, String>> _listeningHistory = [];
 
@@ -291,6 +295,7 @@ class PreferencesService extends ChangeNotifier {
   String? get profileImagePath => _profileImagePath;
   List<String> get searchHistory => _searchHistory;
   List<Map<String, String>> get listeningHistory => _listeningHistory;
+  List<String> get followedArtists => _followedArtists.toList(growable: false);
   List<String> get preferredLanguages => _preferredLanguages;
   String get mostPlayedArtist => _mostPlayedArtist;
   int get topArtistPlayCount => _topArtistPlayCount;
@@ -396,6 +401,11 @@ class PreferencesService extends ChangeNotifier {
         _listeningHistory = [];
       }
     }
+
+    final followedList = _prefs.getStringList(_followedArtistsKey) ?? [];
+    _followedArtists
+      ..clear()
+      ..addAll(followedList);
 
     final playsJson = _prefs.getString('artistPlayCountsJson');
     if (playsJson != null && playsJson.isNotEmpty) {
@@ -704,6 +714,45 @@ class PreferencesService extends ChangeNotifier {
             .toList()
           ..sort((a, b) => b.value.compareTo(a.value));
     return sorted.take(limit).toList();
+  }
+
+  /// Checks whether an artist is in the user's followed list.
+  bool isArtistFollowed(String artistName) {
+    final norm = PlaylistArtistFilter.normalize(artistName);
+    if (norm.isEmpty) return false;
+    return _followedArtists.any(
+      (a) => PlaylistArtistFilter.normalize(a) == norm,
+    );
+  }
+
+  /// Toggles the following status for an artist.
+  /// NOTE: Followed artists are strictly isolated and do NOT influence Daily Mix synthesis.
+  Future<bool> toggleFollowArtist(String artistName) async {
+    final clean = artistName.trim();
+    if (clean.isEmpty) return false;
+    final norm = PlaylistArtistFilter.normalize(clean);
+    final existing = _followedArtists.firstWhere(
+      (a) => PlaylistArtistFilter.normalize(a) == norm,
+      orElse: () => '',
+    );
+
+    bool nowFollowed;
+    if (existing.isNotEmpty) {
+      _followedArtists.remove(existing);
+      nowFollowed = false;
+    } else {
+      _followedArtists.add(clean);
+      nowFollowed = true;
+    }
+
+    if (_isInitialized) {
+      await _prefs.setStringList(
+        _followedArtistsKey,
+        _followedArtists.toList(growable: false),
+      );
+    }
+    notifyListeners();
+    return nowFollowed;
   }
 
   Future<void> recordSongPlay(String rawAuthor, String rawTitle) async {

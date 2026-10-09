@@ -746,5 +746,164 @@ void main() {
         );
       },
     );
+
+    test(
+      'isFeaturedTrack and extractFeaturedArtist accurately detect collaborators without false positives',
+      () {
+        expect(
+          CanonicalSongDedup.isFeaturedTrack(
+            'Save Your Tears (feat. Ariana Grande)',
+          ),
+          isTrue,
+        );
+        expect(
+          CanonicalSongDedup.extractFeaturedArtist(
+            'Save Your Tears (feat. Ariana Grande)',
+          ),
+          equals('Ariana Grande'),
+        );
+
+        expect(
+          CanonicalSongDedup.isFeaturedTrack('Die For You [ft. Ariana Grande]'),
+          isTrue,
+        );
+        expect(
+          CanonicalSongDedup.extractFeaturedArtist(
+            'Die For You [ft. Ariana Grande]',
+          ),
+          equals('Ariana Grande'),
+        );
+
+        expect(
+          CanonicalSongDedup.isFeaturedTrack('Calm Down (with Selena Gomez)'),
+          isTrue,
+        );
+        expect(
+          CanonicalSongDedup.extractFeaturedArtist(
+            'Calm Down (with Selena Gomez)',
+          ),
+          equals('Selena Gomez'),
+        );
+
+        expect(
+          CanonicalSongDedup.isFeaturedTrack(
+            'Levitating',
+            'Dua Lipa feat. DaBaby',
+          ),
+          isTrue,
+        );
+        expect(
+          CanonicalSongDedup.extractFeaturedArtist(
+            'Levitating',
+            'Dua Lipa feat. DaBaby',
+          ),
+          equals('DaBaby'),
+        );
+
+        // Titles with ordinary 'with' must NOT be classified as featured
+        expect(CanonicalSongDedup.isFeaturedTrack('Dance With Me'), isFalse);
+        expect(
+          CanonicalSongDedup.extractFeaturedArtist('Dance With Me'),
+          isNull,
+        );
+        expect(CanonicalSongDedup.isFeaturedTrack('With You'), isFalse);
+        expect(CanonicalSongDedup.extractFeaturedArtist('With You'), isNull);
+        expect(CanonicalSongDedup.isFeaturedTrack('Stay With Me'), isFalse);
+        expect(
+          CanonicalSongDedup.extractFeaturedArtist('Stay With Me'),
+          isNull,
+        );
+      },
+    );
+
+    test('scoreLyricsCandidate strictly differentiates original vs (feat.) lyrics', () {
+      final originalCand = {
+        'id': 301,
+        'trackName': 'Save Your Tears',
+        'artistName': 'The Weeknd',
+        'albumName': 'After Hours',
+        'duration': 215.0,
+        'syncedLyrics':
+            '[00:15.00] I saw you dancing in a crowded room\n[00:20.00] You look so happy when I\'m not with you',
+      };
+
+      final featCand = {
+        'id': 302,
+        'trackName': 'Save Your Tears (feat. Ariana Grande) (Remix)',
+        'artistName': 'The Weeknd, Ariana Grande',
+        'albumName': 'Save Your Tears (Remix)',
+        'duration': 215.0,
+        'syncedLyrics':
+            '[00:15.00] I saw you dancing in a crowded room\n[00:35.00] [Ariana Grande] Met you once under a Pisces moon',
+      };
+
+      // 1. When resolving Original song:
+      final originalScoreForOriginal = CanonicalSongDedup.scoreLyricsCandidate(
+        targetLang: 'english',
+        targetTitle: 'Save Your Tears',
+        targetArtist: 'The Weeknd',
+        targetDuration: 215,
+        candidate: originalCand,
+        isTargetFeatured: false,
+      );
+
+      final featScoreForOriginal = CanonicalSongDedup.scoreLyricsCandidate(
+        targetLang: 'english',
+        targetTitle: 'Save Your Tears',
+        targetArtist: 'The Weeknd',
+        targetDuration: 215,
+        candidate: featCand,
+        isTargetFeatured: false,
+      );
+
+      expect(
+        originalScoreForOriginal,
+        greaterThan(featScoreForOriginal),
+        reason:
+            'Original lyrics must score higher than featured lyrics for original song',
+      );
+      expect(originalScoreForOriginal, greaterThanOrEqualTo(500));
+      expect(
+        featScoreForOriginal,
+        lessThan(originalScoreForOriginal - 300),
+        reason:
+            'Featured candidate must be severely penalized for original song',
+      );
+
+      // 2. When resolving Featured song:
+      final originalScoreForFeat = CanonicalSongDedup.scoreLyricsCandidate(
+        targetLang: 'english',
+        targetTitle: 'Save Your Tears (feat. Ariana Grande)',
+        targetArtist: 'The Weeknd',
+        targetDuration: 215,
+        candidate: originalCand,
+        isTargetFeatured: true,
+        targetFeaturedArtist: 'Ariana Grande',
+      );
+
+      final featScoreForFeat = CanonicalSongDedup.scoreLyricsCandidate(
+        targetLang: 'english',
+        targetTitle: 'Save Your Tears (feat. Ariana Grande)',
+        targetArtist: 'The Weeknd',
+        targetDuration: 215,
+        candidate: featCand,
+        isTargetFeatured: true,
+        targetFeaturedArtist: 'Ariana Grande',
+      );
+
+      expect(
+        featScoreForFeat,
+        greaterThan(originalScoreForFeat),
+        reason:
+            'Featured lyrics must score higher than original lyrics for featured song',
+      );
+      expect(featScoreForFeat, greaterThanOrEqualTo(700));
+      expect(
+        originalScoreForFeat,
+        lessThan(featScoreForFeat - 300),
+        reason:
+            'Solo candidate must be penalized when resolving featured track',
+      );
+    });
   });
 }

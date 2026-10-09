@@ -57,3 +57,5 @@ node_modules/
 
 # Local runtime data
 custom_playlists.json
+liked_songs.json
+*.apk

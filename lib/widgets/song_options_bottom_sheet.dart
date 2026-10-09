@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 import '../services/music_service.dart';
+import '../screens/artist_profile_screen.dart';
+import '../screens/album_screen.dart';
 import '../services/preferences_service.dart';
 
 /// Converts a song Map representation into a youtube_explode Video instance
@@ -180,6 +182,24 @@ void showSongOptionsBottomSheet(
                   },
                 ),
 
+              // Action 0a: View Artist Profile
+              _buildActionTile(
+                icon: Icons.person_rounded,
+                iconColor: const Color(0xFF1DB954),
+                title: 'View Artist Profile',
+                subtitle: 'Explore full discography for ${song.author}',
+                onTap: () {
+                  Navigator.pop(ctx);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) =>
+                          ArtistProfileScreen(artistName: song.author),
+                    ),
+                  );
+                },
+              ),
+
               // Action 0b: Start Song Radio
               _buildActionTile(
                 icon: Icons.auto_awesome_rounded,
@@ -190,6 +210,87 @@ void showSongOptionsBottomSheet(
                   Navigator.pop(ctx);
                   musicService.startSongRadio(song);
                   _showToast(context, 'Starting radio for "${song.title}"');
+                },
+              ),
+
+              // Action 0c: Go to Album
+              _buildActionTile(
+                icon: Icons.album_rounded,
+                iconColor: const Color(0xFF8E2DE2),
+                title: 'Go to Album',
+                subtitle:
+                    MusicService.getCachedAlbumTitle(song.id.value) ??
+                    MusicService.extractMovieOrAlbumTitle(song.title) ??
+                    'View full album & tracks',
+                onTap: () async {
+                  Navigator.pop(ctx);
+
+                  final cachedAlbum = MusicService.getCachedAlbum(
+                    song.id.value,
+                  );
+                  if (cachedAlbum != null && cachedAlbum.songs.isNotEmpty) {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => AlbumScreen(
+                          album: cachedAlbum,
+                          albumId: cachedAlbum.id,
+                          albumTitle: cachedAlbum.title,
+                          albumArtwork: cachedAlbum.artwork,
+                          albumArtist: cachedAlbum.artist,
+                        ),
+                      ),
+                    );
+                    return;
+                  }
+
+                  final cachedId = MusicService.getCachedAlbumId(song.id.value);
+                  final cachedTitle =
+                      MusicService.getCachedAlbumTitle(song.id.value) ??
+                      MusicService.extractMovieOrAlbumTitle(song.title);
+
+                  if ((cachedId != null && cachedId.isNotEmpty) ||
+                      (cachedTitle != null && cachedTitle.isNotEmpty)) {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => AlbumScreen(
+                          albumId: cachedId ?? '',
+                          albumTitle: cachedTitle ?? '',
+                          albumArtwork:
+                              customThumbnail ??
+                              MusicService.getHdThumbnail(song.id.value),
+                          albumArtist: song.author,
+                        ),
+                      ),
+                    );
+                    return;
+                  }
+
+                  final resolved = await musicService.resolveAlbumForSong(song);
+                  if (context.mounted) {
+                    if (resolved != null && resolved.songs.isNotEmpty) {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => AlbumScreen(
+                            album: resolved,
+                            albumId: resolved.id,
+                            albumTitle: resolved.title,
+                            albumArtwork: resolved.artwork,
+                            albumArtist: resolved.artist,
+                          ),
+                        ),
+                      );
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('No album found for "${song.title}".'),
+                          duration: const Duration(seconds: 2),
+                        ),
+                      );
+                    }
+                  }
                 },
               ),
 

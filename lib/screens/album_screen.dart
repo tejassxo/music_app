@@ -6,8 +6,8 @@ import '../models/jio_album.dart';
 import '../services/music_service.dart';
 import '../widgets/mini_player.dart';
 import '../widgets/animated_equalizer.dart';
-import '../layouts/desktop_layout_state.dart';
 import '../widgets/dilse_scrollbar.dart';
+import '../layouts/desktop_layout_state.dart';
 
 class AlbumScreen extends StatefulWidget {
   /// Provide either [album] (full) or [albumId] + [albumTitle] (for lazy load).

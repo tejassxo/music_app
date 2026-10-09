@@ -10,8 +10,8 @@ import '../widgets/animated_equalizer.dart';
 import '../widgets/song_options_bottom_sheet.dart';
 import '../widgets/shimmer_loading.dart';
 import '../widgets/mini_player.dart';
-import '../layouts/desktop_layout_state.dart';
 import '../widgets/dilse_scrollbar.dart';
+import '../layouts/desktop_layout_state.dart';
 
 /// Dedicated Artist Profile & Discography Screen with deep multi-language,
 /// movie range, and filmography filters.
